@@ -1,0 +1,1461 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Карта Эндора — События по ходам</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        /* ===== ГЛОБАЛЬНЫЙ СТИЛЬ ===== */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body, html { width: 100%; height: 100%; background: #0b0000; font-family: 'Roboto', sans-serif; color: #c9a87c; overflow: hidden; }
+        #map { width: 100%; height: 100%; background: #1a0505; border: 3px solid #5a1a1a; box-shadow: 0 0 40px rgba(139,0,0,0.7), inset 0 0 40px rgba(139,0,0,0.3); }
+        button, .route-panel, .saved-routes, .toggle-panel,
+        .leaflet-control-zoom, .leaflet-control-attribution,
+        .color-picker-label, .file-label, .route-item,
+        .cities-control, .help-btn, .toggle-route-btn,
+        .toggle-saved-btn, .factions-toggle-btn, .fullscreen-btn,
+        .events-panel, .event-item {
+            border-radius: 0 !important;
+        }
+        button, .toggle-route-btn, .factions-toggle-btn,
+        .toggle-saved-btn, .help-btn, .fullscreen-btn,
+        .events-toggle-btn, .turn-btn {
+            background: #2a0a0a;
+            border: 2px solid #6b1a1a;
+            color: #c9a87c;
+            font-family: 'Cinzel', serif;
+            font-weight: 700;
+            text-shadow: 0 0 8px #8b0000;
+            box-shadow: 0 0 15px rgba(139,0,0,0.4);
+            transition: all 0.25s ease;
+            cursor: pointer;
+            letter-spacing: 1px;
+        }
+        button:hover, .toggle-route-btn:hover,
+        .factions-toggle-btn:hover, .toggle-saved-btn:hover,
+        .help-btn:hover, .fullscreen-btn:hover,
+        .events-toggle-btn:hover, .turn-btn:hover {
+            background: #4a1212;
+            border-color: #b34a4a;
+            color: #ffd699;
+            box-shadow: 0 0 30px #8b0000, 0 0 60px #4a0000;
+            transform: scale(1.02);
+        }
+        button:active { transform: scale(0.96); }
+
+        .toggle-route-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1002;
+            width: 50px;
+            height: 50px;
+            font-size: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            left: 80px;
+            z-index: 1002;
+            width: 50px;
+            height: 50px;
+            font-size: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .factions-toggle-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1001;
+            padding: 8px 20px;
+            font-size: 15px;
+        }
+        .events-toggle-btn {
+            position: fixed;
+            top: 20px;
+            right: 100px;
+            z-index: 1002;
+            padding: 8px 20px;
+            font-size: 15px;
+        }
+
+        .route-panel {
+            position: fixed;
+            top: 80px;
+            left: 20px;
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            padding: 14px 20px;
+            min-width: 200px;
+            background: rgba(10,0,0,0.92);
+            backdrop-filter: blur(6px);
+            border: 2px solid #4a1010;
+            box-shadow: 0 0 30px rgba(139,0,0,0.5);
+        }
+        .route-panel.visible { display: flex; }
+        .route-panel button, .route-panel select, .color-picker-label {
+            background: #1f0808;
+            border: 1px solid #6b1a1a;
+            color: #c9a87c;
+            padding: 6px 14px;
+            font-family: 'Cinzel', serif;
+            font-size: 13px;
+            font-weight: 700;
+            text-shadow: 0 0 6px #8b0000;
+            box-shadow: 0 0 10px rgba(139,0,0,0.3);
+            transition: 0.2s;
+            cursor: pointer;
+            letter-spacing: 0.5px;
+        }
+        .route-panel button:hover, .route-panel select:hover,
+        .color-picker-label:hover {
+            background: #3a1010;
+            border-color: #b34a4a;
+            box-shadow: 0 0 20px #8b0000;
+        }
+        .active-mode {
+            background: #7a1a1a !important;
+            border-color: #ff6633 !important;
+            color: #ffdd99 !important;
+            box-shadow: 0 0 30px #ff3300 !important;
+        }
+        .route-info {
+            background: rgba(0,0,0,0.6);
+            padding: 4px 12px;
+            font-size: 13px;
+            color: #ffd699;
+            border: 1px solid #6b1a1a;
+            display: inline-flex;
+            align-items: center;
+        }
+        .color-picker {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #6b1a1a;
+            background: transparent;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .cities-control {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 1000;
+            width: 270px;
+            max-height: 70vh;
+            overflow-y: auto;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            padding: 14px 16px;
+            background: rgba(10,0,0,0.92);
+            backdrop-filter: blur(6px);
+            border: 2px solid #4a1010;
+            box-shadow: 0 0 30px rgba(139,0,0,0.5);
+        }
+        .cities-control.visible { display: flex; }
+        .cities-control h4 {
+            margin: 0 0 4px;
+            color: #ffd966;
+            border-bottom: 1px solid #6b1a1a;
+            padding-bottom: 4px;
+            font-family: 'Cinzel', serif;
+            letter-spacing: 1px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .city-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 2px 0;
+        }
+        .city-checkbox input { width: 16px; height: 16px; cursor: pointer; }
+        .city-checkbox label { cursor: pointer; font-size: 13px; }
+        .city-checkbox:hover { background: rgba(139,0,0,0.2); }
+        .button-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 6px;
+        }
+        .button-group button {
+            background: #1f0808;
+            border: 1px solid #6b1a1a;
+            color: #c9a87c;
+            padding: 4px 12px;
+            font-size: 12px;
+            font-family: 'Cinzel', serif;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .button-group button:hover {
+            background: #3a1010;
+            box-shadow: 0 0 15px #8b0000;
+        }
+
+        .toggle-saved-btn {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            z-index: 1001;
+            width: 50px;
+            height: 50px;
+            font-size: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .saved-routes {
+            position: fixed;
+            right: 80px;
+            bottom: 20px;
+            z-index: 1000;
+            width: 380px;
+            max-height: 450px;
+            overflow-y: auto;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            padding: 14px 16px;
+            background: rgba(10,0,0,0.92);
+            backdrop-filter: blur(6px);
+            border: 2px solid #4a1010;
+            box-shadow: 0 0 30px rgba(139,0,0,0.5);
+        }
+        .saved-routes.visible { display: flex; }
+        .saved-routes h4 {
+            margin: 0 0 4px;
+            color: #ffd966;
+            border-bottom: 1px solid #6b1a1a;
+            padding-bottom: 4px;
+            font-family: 'Cinzel', serif;
+            letter-spacing: 1px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .route-item {
+            background: #140808;
+            padding: 8px 10px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            border-left: 4px solid;
+            color: #f0e6d0;
+            box-shadow: inset 0 0 10px rgba(139,0,0,0.2);
+        }
+        .route-select { margin-right: 4px; }
+        .route-name { font-weight: bold; font-size: 14px; flex: 2; font-family: 'Cinzel', serif; }
+        .route-details { font-size: 11px; color: #d4c9a8; flex: 3; }
+        .route-actions {
+            display: flex;
+            gap: 6px;
+            margin-left: auto;
+        }
+        .route-actions button, .route-actions label {
+            background: #1f0808;
+            border: 1px solid #6b1a1a;
+            padding: 2px 10px;
+            font-size: 11px;
+            color: #c9a87c;
+            cursor: pointer;
+            font-family: 'Cinzel', serif;
+            transition: 0.2s;
+        }
+        .route-actions button:hover, .route-actions label:hover {
+            background: #3a1010;
+            box-shadow: 0 0 15px #8b0000;
+        }
+        .file-label {
+            display: inline-block;
+            background: #1f0808;
+            border: 1px solid #6b1a1a;
+            padding: 4px 16px;
+            cursor: pointer;
+            font-size: 13px;
+            font-family: 'Cinzel', serif;
+            color: #c9a87c;
+            transition: 0.2s;
+        }
+        .file-label:hover {
+            background: #3a1010;
+            box-shadow: 0 0 20px #8b0000;
+        }
+        #importFile { display: none; }
+        hr { margin: 6px 0; border-color: #6b1a1a; }
+
+        .toggle-panel {
+            position: fixed;
+            left: 20px;
+            bottom: 20px;
+            z-index: 1000;
+            display: flex;
+            gap: 10px;
+            padding: 8px 14px;
+            background: rgba(10,0,0,0.92);
+            backdrop-filter: blur(6px);
+            border: 2px solid #4a1010;
+            box-shadow: 0 0 30px rgba(139,0,0,0.5);
+        }
+        .toggle-panel button {
+            background: #1f0808;
+            border: 1px solid #6b1a1a;
+            color: #c9a87c;
+            font-size: 14px;
+            font-weight: 700;
+            padding: 6px 16px;
+            cursor: pointer;
+            font-family: 'Cinzel', serif;
+            transition: 0.2s;
+            text-shadow: 0 0 6px #8b0000;
+        }
+        .toggle-panel button:hover {
+            background: #3a1010;
+            box-shadow: 0 0 20px #8b0000;
+        }
+        .toggle-panel button.active {
+            background: #7a1a1a;
+            border-color: #ff6633;
+            color: #ffdd99;
+            box-shadow: 0 0 30px #ff3300;
+        }
+
+        .help-btn {
+            position: fixed;
+            right: 20px;
+            bottom: 100px;
+            z-index: 1000;
+            width: 44px;
+            height: 44px;
+            font-size: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* ===== ПАНЕЛЬ СОБЫТИЙ ===== */
+        .events-panel {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 1001;
+            width: 320px;
+            max-height: 75vh;
+            overflow-y: auto;
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+            padding: 14px 16px;
+            background: rgba(10,0,0,0.92);
+            backdrop-filter: blur(6px);
+            border: 2px solid #4a1010;
+            box-shadow: 0 0 30px rgba(139,0,0,0.5);
+            color: #c9a87c;
+        }
+        .events-panel.visible { display: flex; }
+        .events-panel h4 {
+            margin: 0 0 4px;
+            color: #ffd966;
+            border-bottom: 1px solid #6b1a1a;
+            padding-bottom: 4px;
+            font-family: 'Cinzel', serif;
+            letter-spacing: 1px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 16px;
+        }
+        .events-panel .era-name {
+            font-family: 'Cinzel', serif;
+            color: #ffd966;
+            text-shadow: 0 0 8px #8b0000;
+            font-size: 15px;
+            margin-bottom: 4px;
+        }
+        .turns-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 4px 0 10px 0;
+        }
+        .turn-btn {
+            padding: 4px 12px;
+            font-size: 13px;
+            background: #1f0808;
+            border: 1px solid #6b1a1a;
+            color: #c9a87c;
+            cursor: pointer;
+            font-family: 'Cinzel', serif;
+            transition: 0.2s;
+        }
+        .turn-btn:hover {
+            background: #3a1010;
+            box-shadow: 0 0 15px #8b0000;
+        }
+        .turn-btn.active {
+            background: #7a1a1a;
+            border-color: #ff6633;
+            color: #ffdd99;
+            box-shadow: 0 0 20px #ff3300;
+        }
+        .events-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 6px;
+            border-top: 1px solid #4a1010;
+            padding-top: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .event-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #140808;
+            padding: 6px 10px;
+            border-left: 3px solid;
+            font-size: 13px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .event-item:hover {
+            background: #2a1212;
+            box-shadow: 0 0 15px rgba(139,0,0,0.3);
+        }
+        .event-item .emoji {
+            font-size: 24px;
+            width: 36px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .event-item .info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .event-item .info .title {
+            font-weight: bold;
+            color: #ffd699;
+        }
+        .event-item .info .desc {
+            font-size: 11px;
+            color: #b36b6b;
+        }
+        .event-item .goto-btn {
+            background: #1f0808;
+            border: 1px solid #6b1a1a;
+            color: #c9a87c;
+            padding: 2px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            font-family: 'Cinzel', serif;
+            transition: 0.2s;
+            flex-shrink: 0;
+        }
+        .event-item .goto-btn:hover {
+            background: #3a1010;
+            box-shadow: 0 0 15px #8b0000;
+        }
+        .no-events {
+            color: #7a4a4a;
+            font-style: italic;
+            text-align: center;
+            padding: 10px 0;
+        }
+
+        /* ===== СТИЛИ ДЛЯ LEAFLET (ЗУМ) ===== */
+        .leaflet-control-zoom {
+            position: fixed !important;
+            top: 80px;
+            right: 20px;
+            left: auto !important;
+            bottom: auto !important;
+            z-index: 1002;
+            border: 2px solid #4a1010;
+            background: rgba(10,0,0,0.85);
+            box-shadow: 0 0 20px rgba(139,0,0,0.5);
+            backdrop-filter: blur(4px);
+        }
+        .leaflet-control-zoom a {
+            background: transparent !important;
+            color: #c9a87c !important;
+            border-bottom: 1px solid #4a1010 !important;
+            font-family: 'Cinzel', serif !important;
+            font-weight: 700;
+            text-shadow: 0 0 8px #8b0000;
+            transition: 0.2s;
+        }
+        .leaflet-control-zoom a:hover {
+            background: rgba(139,0,0,0.4) !important;
+            color: #ffcc99 !important;
+            box-shadow: 0 0 20px #8b0000;
+        }
+        .leaflet-control-zoom a:last-child { border-bottom: none !important; }
+        .leaflet-control-attribution { display: none !important; }
+
+        .custom-popup .leaflet-popup-content-wrapper {
+            background: #1a0808;
+            color: #f5e6c4;
+            border: 2px solid #6b1a1a;
+            box-shadow: 0 0 30px rgba(139,0,0,0.6);
+        }
+        .custom-popup .leaflet-popup-tip {
+            background: #1a0808;
+            border: 2px solid #6b1a1a;
+            border-top: none;
+            border-left: none;
+        }
+
+        /* ===== АДАПТИВНОСТЬ ===== */
+        @media (max-width: 768px) {
+            .route-panel { left: 10px; top: 70px; min-width: 160px; padding: 10px 14px; }
+            .cities-control { right: 10px; top: 70px; width: 220px; }
+            .saved-routes { right: 70px; width: 280px; }
+            .events-panel { right: 10px; top: 70px; width: 280px; }
+            .toggle-panel { left: 10px; bottom: 10px; padding: 6px 10px; gap: 6px; }
+            .toggle-panel button { font-size: 12px; padding: 4px 10px; }
+            .fullscreen-btn { left: 70px; width: 44px; height: 44px; font-size: 22px; }
+            .events-toggle-btn { right: 80px; font-size: 13px; padding: 6px 12px; }
+            .factions-toggle-btn { font-size: 13px; padding: 6px 14px; }
+            .help-btn { right: 10px; bottom: 80px; width: 38px; height: 38px; font-size: 18px; }
+            .toggle-saved-btn { right: 10px; bottom: 10px; width: 44px; height: 44px; font-size: 22px; }
+        }
+        @media (max-width: 480px) {
+            .route-panel { left: 5px; top: 60px; min-width: 140px; padding: 8px 10px; gap: 6px; }
+            .route-panel button, .route-panel select { font-size: 11px; padding: 4px 8px; }
+            .cities-control { right: 5px; top: 60px; width: 180px; }
+            .saved-routes { right: 60px; width: 220px; }
+            .events-panel { right: 5px; top: 60px; width: 240px; }
+            .toggle-panel button { font-size: 10px; padding: 3px 6px; }
+            .events-toggle-btn { right: 70px; font-size: 12px; padding: 4px 10px; }
+        }
+		/* ===== БЛОК ПАНЕЛЕЙ СПРАВА (без наслоения) ===== */
+		.right-menu {
+			position: fixed;
+			top: 20px;
+			right: 20px;
+			z-index: 1001;
+			display: flex;
+			flex-direction: column;
+			align-items: flex-end;
+		}
+		.menu-buttons {
+			display: flex;
+			gap: 0;
+		}
+		.menu-btn {
+			padding: 8px 16px;
+			font-size: 15px;
+			border: 2px solid #6b1a1a;
+			border-right: none;
+			background: #2a0a0a;
+			color: #c9a87c;
+			font-family: 'Cinzel', serif;
+			font-weight: 700;
+			text-shadow: 0 0 8px #8b0000;
+			box-shadow: 0 0 15px rgba(139,0,0,0.4);
+			transition: all 0.25s ease;
+			cursor: pointer;
+			letter-spacing: 1px;
+		}
+		.menu-btn:last-child {
+			border-right: 2px solid #6b1a1a;
+		}
+		.menu-btn:hover {
+			background: #4a1212;
+			border-color: #b34a4a;
+			color: #ffd699;
+		}
+		.menu-btn.active {
+			background: #7a1a1a;
+			border-color: #ff6633;
+			color: #ffdd99;
+			box-shadow: 0 0 30px #ff3300;
+		}
+
+		.menu-panels {
+			display: flex;
+			gap: 0;
+			margin-top: 0;
+		}
+		.menu-panels > div {
+			background: rgba(10,0,0,0.92);
+			backdrop-filter: blur(6px);
+			border: 2px solid #4a1010;
+			border-top: none;
+			box-shadow: 0 0 30px rgba(139,0,0,0.5);
+			color: #c9a87c;
+			padding: 12px 16px;
+			width: 320px;
+			max-height: 75vh;
+			overflow-y: auto;
+			display: none;
+			flex-direction: column;
+			gap: 8px;
+		}
+		.menu-panels > div.visible {
+			display: flex;
+		}
+		.panel-events {
+			border-right: none;
+		}
+		.panel-factions {
+			border-left: none;
+		}
+		.panel-events h4, .panel-factions h4 {
+			margin: 0 0 4px;
+			color: #ffd966;
+			border-bottom: 1px solid #6b1a1a;
+			padding-bottom: 4px;
+			font-family: 'Cinzel', serif;
+			letter-spacing: 1px;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			font-size: 16px;
+		}
+		
+		/* Стилизация скроллбаров для панелей */
+		.events-list::-webkit-scrollbar,
+		.cities-control::-webkit-scrollbar,
+		.saved-routes::-webkit-scrollbar {
+			width: 6px;
+		}
+		.events-list::-webkit-scrollbar-track,
+		.cities-control::-webkit-scrollbar-track,
+		.saved-routes::-webkit-scrollbar-track {
+			background: #1a0808;
+		}
+		.events-list::-webkit-scrollbar-thumb,
+		.cities-control::-webkit-scrollbar-thumb,
+		.saved-routes::-webkit-scrollbar-thumb {
+			background: #6b1a1a;
+			border: 1px solid #4a1010;
+		}
+		.events-list::-webkit-scrollbar-thumb:hover,
+		.cities-control::-webkit-scrollbar-thumb:hover,
+		.saved-routes::-webkit-scrollbar-thumb:hover {
+			background: #b34a4a;
+		}
+		
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <!-- ===== ЛЕВАЯ ГРУППА КНОПОК ===== -->
+    <div id="toggleRouteBtn" class="toggle-route-btn" title="Панель маршрутов">☰</div>
+    <div id="fullscreenBtn" class="fullscreen-btn" title="Полноэкранный режим">⛶</div>
+
+    <!-- ===== ПАНЕЛЬ МАРШРУТОВ ===== -->
+    <div id="routePanel" class="route-panel">
+        <button id="startRouteBtn">🗺️ Маршрут</button>
+        <button id="rulerBtn">📏 Линейка</button>
+        <button id="clearTempBtn">🗑️ Очистить временное</button>
+        <select id="routeTypeSelect">
+            <option value="land">🚶 Сухопутный (4 кл/ход)</option>
+            <option value="naval">⛵ Морской (5 кл/ход)</option>
+        </select>
+        <label class="color-picker-label">
+            🎨 Цвет <input type="color" id="routeColorPicker" value="#ffaa33" class="color-picker">
+        </label>
+        <button id="saveRouteBtn">💾 Сохранить маршрут</button>
+        <div id="routeInfo" class="route-info" style="display: none;"></div>
+    </div>
+
+    <!-- ===== ПАНЕЛЬ СОХРАНЁННЫХ МАРШРУТОВ ===== -->
+    <div id="toggleSavedBtn" class="toggle-saved-btn" title="Сохранённые маршруты">📌</div>
+    <div id="savedRoutesPanel" class="saved-routes">
+        <h4>📌 Сохранённые маршруты <span id="closeSavedBtn" style="cursor:pointer; font-size:18px;">✖</span></h4>
+        <div id="routesList"></div>
+        <hr>
+        <div style="display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap;">
+            <button id="exportSelectedRoutesBtn">📤 Экспорт выбранных</button>
+            <button id="exportAllRoutesBtn">📤 Экспорт всё</button>
+            <label for="importFile" class="file-label">📥 Импорт (добавить)</label>
+            <input type="file" id="importFile" accept=".json">
+        </div>
+    </div>
+
+    <!-- ===== ПАНЕЛЬ ПЕРЕКЛЮЧЕНИЯ СЛОЁВ ===== -->
+    <div class="toggle-panel">
+        <button id="btnRelief" class="active">🏔️ Рельеф</button>
+        <button id="btnCountries">⚜️ Страны</button>
+        <button id="btnFactions">⚔️ Фракции</button>
+    </div>
+
+    <!-- ===== БЛОК ПАНЕЛЕЙ СПРАВА (кнопки + панели) ===== -->
+	<div class="right-menu">
+		<div class="menu-buttons">
+			<button id="eventsToggleBtn" class="menu-btn">📅 События</button>
+			<button id="factionsToggleBtn" class="menu-btn">🏴 Фракции</button>
+		</div>
+		<div class="menu-panels">
+			<!-- Панель событий -->
+			<div id="eventsPanel" class="panel-events">
+				<h4>
+					📅 События
+					<span style="display:flex; align-items:center; gap:8px;">
+						<button id="toggleEventsVisibilityBtn" class="menu-btn" style="padding:2px 10px; font-size:12px; border:1px solid #6b1a1a; background:#1f0808;">👁️ Скрыты</button>
+						<span id="closeEventsBtn" style="cursor:pointer; font-size:18px;">✖</span>
+					</span>
+				</h4>
+				<div id="eraDisplay" class="era-name">Эпоха «Красного Дракона»</div>
+				<div id="turnsContainer" class="turns-container"></div>
+				<div id="eventsList" class="events-list"></div>
+			</div>
+			<!-- Панель фракций -->
+			<div id="citiesPanel" class="panel-factions">
+				<h4>🗺️ Фракции <span id="closeFactionsBtn" style="cursor:pointer; font-size:18px;">✖</span></h4>
+				<div id="citiesChecklist"></div>
+				<div class="button-group">
+					<button id="checkAllBtn">✅ Выделить все</button>
+					<button id="uncheckAllBtn">❌ Убрать все</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+    <!-- ===== КНОПКА ПОМОЩИ ===== -->
+    <div id="helpBtn" class="help-btn" title="Помощь">❓</div>
+
+    <!-- ===== ПОДКЛЮЧЕНИЕ ФАЙЛА С ДАННЫМИ (data.js) ===== -->
+    <script src="data.js"></script>
+
+    <script>
+        (function() {
+            // ---------- ПАРАМЕТРЫ КАРТЫ ----------
+            const MAP_W = 4000;
+            const MAP_H = 2448;
+            const PX_PER_CELL = 58;
+            const SPEEDS = { land: 4, naval: 5 };
+            const layers = {
+                relief: 'Karta_relief.png',
+                countries: 'Karta_countries.png',
+                factions: 'Karta_factions.png'
+            };
+            const citiesData = [
+                { name: "Ялекрия", px: 800, py: 1525, icon: "Yalekria.png", link: "https://vk.com/page-227907879_55698680", shortDesc: "Провинции Ялекрия — одна из самых стабильных провинций на юго-западе Империи", largeImage: "Yalekria.png" },
+                { name: "Орден «Северного орла»", px: 800, py: 675, icon: "Remtel.png", link: "https://vk.com/page-227907879_55695783", shortDesc: "Ремтэл - граница Империи, жизнь на острие меча", largeImage: "Remtel.png" },
+                { name: "Трибунал Священного Суда", px: 1150, py: 850, icon: "Zalarix.png", link: "https://vk.ru/page-227907879_55698630", shortDesc: "Заларикс — провинция Империи с развитой железообрабатывающей отраслью." },
+                { name: "Домен Императора", px: 1460, py: 1350, icon: "armoria.png", link: "https://vk.ru/page-227907879_55699238", shortDesc: "Малентий — закрытый древний город у Огненного моря. Столица императоров, где когда‑то в катакомбах держали драконов." },
+                { name: "Ревнители Веры", px: 1440, py: 1080, icon: "Valerie.png", link: "https://vk.ru/page-227907879_55695972", shortDesc: "Валерика под управлением кардинала Доната Тоццо Покко ди Борхи стремится быть похожей на Тринн." },
+                { name: "Сигиллум", px: 1650, py: 1090, icon: "Xander.png", link: "https://vk.ru/page-227907879_55695422" , shortDesc: "Ксандер издавна был важным прибрежным городом, служившим воротами Империи Эндор на западных торгово-морских путях." },
+                { name: "Орден «Воноветус»", px: 1250, py: 1020, icon: "Yalekhiya.png", link: "https://vk.ru/page-227907879_55695428" , shortDesc: "Ялехия — среднезажиточная провинция в центре империи: основной источник дохода — древесина." },
+                { name: "Имперские псы", px: 850, py: 880, icon: "Caesar.png", link: "https://vk.ru/page-227907879_55695387", shortDesc: "Цез — тихая провинция на северо‑западе с бедными землями." },
+                { name: "Объединённые силы", px: 1190, py: 1315, icon: "Myrmillion.png", link: "https://vk.ru/page-227907879_55696418", shortDesc: "Мирмиллион — богатая провинция с плодородными землями вокруг Лакуса." },
+                { name: "Длань Обета", px: 740, py: 1270, icon: "Neapolinia.png", link: "https://vk.ru/page-227907879_55700874", shortDesc: "Богатая ресурсами провинция." },
+                { name: "Лимитаны", px: 1415, py: 700, icon: "Limitans.png", link: "https://vk.ru/page-227907879_55700722", shortDesc: "Варатикс и Селан." },
+                { name: "Тарнум", px: 1320, py: 1830, icon: "Tarnum.png", link: "https://vk.ru/page-227907879_55700721", shortDesc: "Реталия под властью рода Тарнов." },
+                { name: "Клинки Де Ауре", px: 480, py: 1830, icon: "De_Aura.png", link: "https://vk.ru/page-227907879_55698737", shortDesc: "Оплот Черного дракона в горах Карамидрана." },
+				{ name: "Миланиды", px: 1188, py: 1707, icon: "milanids.png", link: "https://vk.ru/page-227907879_55700875", shortDesc: "Древний род правителей провинции Фивиан, чья власть держится на контроле над шахтами и торговыми путями, а внутренняя политика балансирует между интригами знати и «умеренным» правлением молодого наследника." },
+				{ name: "Базилика Триумф", px: 993, py: 929, icon: "basilica.png", shortDesc: "Провинция Цезполис, оплот сенатской лояльности и образованности, где молодой легастат Марцелл Аселлио торгует влиянием и артиллерией, балансируя между столичными амбициями и недоверием Тринна." },
+				{ name: "Дом Флориан", px: 1038, py: 1086, icon: "florian.png", shortDesc: "Молодая аристократическая династия, управляющая транзитной провинцией Яктавий на северо-западе Империи. Это земля, где ремесленники плавят металл, лесорубы валят сосны, а купцы прокладывают маршруты через начало великого северного тракта." },
+				{ name: "Дом Скрибониев", px: 416, py: 1759, icon: "skriboniev.png", shortDesc: "Не мечи и не земли, а долговые расписки: четыре поколения финансовых акул Яктавии, чья репутация дороже золота, а «Стальной Вексель» напоминает должникам, что просрочка — это не просто цифры."},
+				{ name: "Дом Атрей", px: 931, py: 1501, icon: "atrei.png", shortDesc: "Прагматичные центральные земли Генирии, где кавалерия контролирует тракты, зерно и сталь кормят провинцию, а верность Империи — не клятва, а расчёт." },
+			];
+
+            function toLeafletCoords(px, py) { return [MAP_H - py, px]; }
+			
+			function stripHtml(html) {
+				if (!html) return '';
+				const temp = document.createElement('div');
+				temp.innerHTML = html;
+				return temp.textContent || temp.innerText || '';
+			}
+			
+            // ---------- ПЕРЕМЕННЫЕ СОСТОЯНИЯ ----------
+            let map, currentOverlay, currentLayer = 'relief';
+            let markerGroup, markersMap = new Map(), markersCreated = false;
+            let cities = citiesData.map(c => ({ ...c, coords: toLeafletCoords(c.px, c.py), visible: true }));
+            let routeLayerGroup = null;
+            let eventsLayer = null;
+            let eventsPanelVisible = false;
+            let factionsPanelVisible = false;
+            let routePanelVisible = false;
+            let savedPanelVisible = false;
+			let eventsVisible = false;   // по умолчанию маркеры скрыты
+			let currentTurn = null;      // запоминаем выбранный ход
+
+            // ---------- МАРШРУТЫ ----------
+            let tempPoints = [];
+            let tempPolyline = null;
+            let tempMarkers = [];
+            let activeMode = null;
+            let currentRouteType = 'land';
+            let currentColor = '#ffaa33';
+            let savedRoutes = [];
+
+            // ---------- ФУНКЦИИ МАРШРУТОВ (сокращённо) ----------
+            function formatDistanceCells(cells) { return cells.toFixed(1) + " клеток"; }
+            function calculateTotalCells(points) {
+                let totalPx = 0;
+                for (let i = 0; i < points.length - 1; i++) {
+                    const p1 = points[i], p2 = points[i+1];
+                    const dx = (p1.lng - p2.lng), dy = (p1.lat - p2.lat);
+                    totalPx += Math.sqrt(dx*dx + dy*dy);
+                }
+                return totalPx / PX_PER_CELL;
+            }
+            function updateTempInfo() {
+                const infoDiv = document.getElementById('routeInfo');
+                if (tempPoints.length < 2) {
+                    infoDiv.style.display = 'none';
+                    return;
+                }
+                const totalCells = calculateTotalCells(tempPoints);
+                const speed = SPEEDS[currentRouteType];
+                const turns = totalCells / speed;
+                const typeName = currentRouteType === 'naval' ? 'морской' : 'сухопутный';
+                const modeLabel = activeMode === 'ruler' ? '📏 Линейка: ' : '🗺️ Маршрут: ';
+                infoDiv.innerHTML = `${modeLabel} ${formatDistanceCells(totalCells)} (≈ ${turns.toFixed(1)} ходов, ${typeName})`;
+                infoDiv.style.display = 'inline-flex';
+            }
+            function clearTemp() {
+                if (tempPolyline) map.removeLayer(tempPolyline);
+                tempMarkers.forEach(m => map.removeLayer(m));
+                tempPoints = [];
+                tempMarkers = [];
+                tempPolyline = null;
+                updateTempInfo();
+            }
+            function redrawTempLine() {
+                if (tempPolyline) map.removeLayer(tempPolyline);
+                if (tempPoints.length > 1) {
+                    tempPolyline = L.polyline(tempPoints, { color: currentColor, weight: 4, dashArray: '8, 8' }).addTo(map);
+                }
+            }
+            function addTempPoint(latLng) {
+                const marker = L.circleMarker(latLng, {
+                    radius: 5, color: currentColor, fillColor: '#b87c4f', fillOpacity: 1, weight: 2
+                }).addTo(map);
+                tempMarkers.push(marker);
+                tempPoints.push(latLng);
+                redrawTempLine();
+                updateTempInfo();
+            }
+            function deactivateModes() {
+                if (activeMode) {
+                    map.off('click', onTempClick);
+                    activeMode = null;
+                }
+                clearTemp();
+                document.getElementById('startRouteBtn').classList.remove('active-mode');
+                document.getElementById('rulerBtn').classList.remove('active-mode');
+            }
+            function onTempClick(e) { if (activeMode) addTempPoint(e.latlng); }
+
+            // ---------- СОХРАНЁННЫЕ МАРШРУТЫ (сокращённо) ----------
+            function addRouteToMap(route) {
+                if (!routeLayerGroup) return;
+                const latlngs = route.points.map(p => L.latLng(p.lat, p.lng));
+                const polyline = L.polyline(latlngs, { color: route.color, weight: 4, opacity: 0.8 });
+                polyline.bindTooltip(route.name, { sticky: true, direction: 'center' });
+                const typeName = route.type === 'naval' ? 'Морской' : 'Сухопутный';
+                polyline.bindPopup(`<b>${route.name}</b><br>${typeName}<br>Расстояние: ${formatDistanceCells(route.distanceCells)} (≈ ${route.turns.toFixed(1)} ходов)`);
+                routeLayerGroup.addLayer(polyline);
+                route._polyline = polyline;
+                route._visible = true;
+            }
+            function redrawAllRoutes() {
+                if (!routeLayerGroup) return;
+                routeLayerGroup.clearLayers();
+                for (let route of savedRoutes) {
+                    if (route._visible !== false) addRouteToMap(route);
+                }
+            }
+            function removeRouteFromMap(route) {
+                if (!routeLayerGroup) return;
+                if (route._polyline) {
+                    routeLayerGroup.removeLayer(route._polyline);
+                    delete route._polyline;
+                } else {
+                    redrawAllRoutes();
+                }
+            }
+            function saveCurrentAsRoute() {
+                if (tempPoints.length < 2) { alert("Постройте маршрут (минимум 2 точки)."); return; }
+                const name = prompt("Название маршрута:", `Маршрут ${savedRoutes.length+1}`);
+                if (!name) return;
+                const totalCells = calculateTotalCells(tempPoints);
+                const turns = totalCells / SPEEDS[currentRouteType];
+                const newRoute = {
+                    id: Date.now(),
+                    name: name,
+                    type: currentRouteType,
+                    color: currentColor,
+                    points: tempPoints.map(p => ({ lat: p.lat, lng: p.lng })),
+                    distanceCells: totalCells,
+                    turns: turns,
+                    _visible: true
+                };
+                savedRoutes.push(newRoute);
+                saveToLocalStorage();
+                renderSavedRoutes();
+                addRouteToMap(newRoute);
+                clearTemp();
+                alert("Маршрут сохранён.");
+            }
+            function renderSavedRoutes() {
+                const container = document.getElementById('routesList');
+                if (!container) return;
+                if (!savedRoutes.length) { container.innerHTML = '<em>Нет сохранённых маршрутов</em>'; return; }
+                container.innerHTML = '';
+                for (let route of savedRoutes) {
+                    const typeName = route.type === 'naval' ? 'Морской' : 'Сухопутный';
+                    const div = document.createElement('div');
+                    div.className = 'route-item';
+                    div.style.borderLeftColor = route.color;
+                    div.innerHTML = `
+                        <div class="route-select">
+                            <input type="checkbox" class="route-select-cb" data-id="${route.id}" title="Выбрать для экспорта">
+                        </div>
+                        <div class="route-name">${escapeHtml(route.name)}</div>
+                        <div class="route-details">${typeName} | ${formatDistanceCells(route.distanceCells)} / ${route.turns.toFixed(1)} ходов</div>
+                        <div class="route-actions">
+                            <label style="display: inline-flex; align-items: center; gap: 4px;"><input type="checkbox" class="route-visibility" data-id="${route.id}" ${route._visible !== false ? 'checked' : ''}> Показать</label>
+                            <button class="btn-change-color" data-id="${route.id}">🎨 Цвет</button>
+                            <button class="btn-delete-route" data-id="${route.id}">🗑️ Удалить</button>
+                        </div>
+                    `;
+                    container.appendChild(div);
+                }
+                document.querySelectorAll('.route-select-cb').forEach(cb => { cb.addEventListener('change', () => {}); });
+                document.querySelectorAll('.route-visibility').forEach(cb => {
+                    cb.addEventListener('change', (e) => {
+                        const id = parseInt(cb.getAttribute('data-id'));
+                        const route = savedRoutes.find(r => r.id === id);
+                        if (route) {
+                            route._visible = cb.checked;
+                            if (route._visible) addRouteToMap(route);
+                            else if (route._polyline) routeLayerGroup.removeLayer(route._polyline);
+                            saveToLocalStorage();
+                        }
+                    });
+                });
+                document.querySelectorAll('.btn-change-color').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const id = parseInt(btn.getAttribute('data-id'));
+                        const route = savedRoutes.find(r => r.id === id);
+                        if (route) {
+                            const newColor = prompt("Введите новый цвет в HEX (например #ff0000):", route.color);
+                            if (newColor && /^#[0-9A-Fa-f]{6}$/.test(newColor)) {
+                                route.color = newColor;
+                                if (route._polyline) route._polyline.setStyle({ color: newColor });
+                                else if (route._visible) addRouteToMap(route);
+                                saveToLocalStorage();
+                                renderSavedRoutes();
+                            } else if (newColor) alert("Неверный формат цвета. Используйте #RRGGBB.");
+                        }
+                    });
+                });
+                document.querySelectorAll('.btn-delete-route').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const id = parseInt(btn.getAttribute('data-id'));
+                        const routeToDelete = savedRoutes.find(r => r.id === id);
+                        if (routeToDelete) {
+                            removeRouteFromMap(routeToDelete);
+                            savedRoutes = savedRoutes.filter(r => r.id !== id);
+                            saveToLocalStorage();
+                            renderSavedRoutes();
+                        }
+                    });
+                });
+            }
+            function getSelectedRouteIds() {
+                const selected = [];
+                document.querySelectorAll('.route-select-cb').forEach(cb => {
+                    if (cb.checked) {
+                        const id = parseInt(cb.getAttribute('data-id'));
+                        if (!isNaN(id)) selected.push(id);
+                    }
+                });
+                return selected;
+            }
+            function exportSelectedRoutes() {
+                const selectedIds = getSelectedRouteIds();
+                const toExport = savedRoutes.filter(r => selectedIds.includes(r.id));
+                if (toExport.length === 0) {
+                    alert("Не выбрано ни одного маршрута для экспорта.");
+                    return;
+                }
+                const dataStr = JSON.stringify(toExport, null, 2);
+                const blob = new Blob([dataStr], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `selected_routes_${new Date().toISOString().slice(0,19)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+            function exportAllRoutes() {
+                if (savedRoutes.length === 0) {
+                    alert("Нет маршрутов для экспорта.");
+                    return;
+                }
+                const dataStr = JSON.stringify(savedRoutes, null, 2);
+                const blob = new Blob([dataStr], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `all_routes_${new Date().toISOString().slice(0,19)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+            function importRoutesAdd(file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const imported = JSON.parse(e.target.result);
+                        if (!Array.isArray(imported)) {
+                            alert("Неверный формат файла: ожидается массив маршрутов.");
+                            return;
+                        }
+                        let addedCount = 0;
+                        let skippedCount = 0;
+                        for (let route of imported) {
+                            const existing = savedRoutes.some(r => r.id === route.id);
+                            if (!existing) {
+                                if (!route.id) route.id = Date.now() + Math.random();
+                                if (!route._visible) route._visible = true;
+                                if (route.points) {
+                                    route.points = route.points.map(p => ({ lat: p.lat, lng: p.lng }));
+                                }
+                                savedRoutes.push(route);
+                                addedCount++;
+                            } else {
+                                skippedCount++;
+                            }
+                        }
+                        if (addedCount > 0) {
+                            saveToLocalStorage();
+                            redrawAllRoutes();
+                            renderSavedRoutes();
+                            alert(`Импорт завершён. Добавлено маршрутов: ${addedCount}. Пропущено (уже существуют): ${skippedCount}.`);
+                        } else {
+                            alert(`Импорт завершён. Новых маршрутов не добавлено (все уже существуют). Пропущено: ${skippedCount}.`);
+                        }
+                    } catch(err) {
+                        alert("Ошибка при разборе JSON: " + err.message);
+                    }
+                };
+                reader.readAsText(file);
+            }
+            function saveToLocalStorage() {
+                const toStore = savedRoutes.map(r => ({
+                    id: r.id, name: r.name, type: r.type, color: r.color,
+                    points: r.points, distanceCells: r.distanceCells, turns: r.turns, _visible: r._visible
+                }));
+                localStorage.setItem('diplomacyRoutes', JSON.stringify(toStore));
+            }
+            function loadFromLocalStorage() {
+                const stored = localStorage.getItem('diplomacyRoutes');
+                if (stored) {
+                    try {
+                        savedRoutes = JSON.parse(stored);
+                        redrawAllRoutes();
+                    } catch(e) {}
+                }
+                renderSavedRoutes();
+            }
+            function escapeHtml(str) { return str.replace(/[&<>]/g, function(m) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m]; }); }
+
+            // ---------- КАРТА ----------
+            function initMap() {
+                map = L.map('map', {
+                    crs: L.CRS.Simple,
+                    zoomControl: false,
+                    attributionControl: false,
+                    scrollWheelZoom: true,
+                    doubleClickZoom: true,
+                    boxZoom: true,
+                    touchZoom: true,
+                    dragging: true
+                });
+                const bounds = [[0, 0], [MAP_H, MAP_W]];
+                currentOverlay = L.imageOverlay(layers.relief, bounds, { opacity: 1 }).addTo(map);
+                map.fitBounds(bounds);
+                map.setMinZoom(0);
+                map.setMaxZoom(4);
+                markerGroup = L.featureGroup().addTo(map);
+                routeLayerGroup = L.layerGroup().addTo(map);
+                eventsLayer = L.layerGroup().addTo(map);
+                map.on('dblclick', () => deactivateModes());
+            }
+
+            // ---------- ФРАКЦИИ ----------
+            function addMarkersToGroup() {
+                for (const city of cities) {
+                    const iconSize = 100;
+                    const customIcon = L.divIcon({
+                        html: `<img src="${city.icon}" style="width: ${iconSize}px; height: auto;">`,
+                        className: 'custom-marker',
+                        iconSize: [iconSize, iconSize],
+                        popupAnchor: [0, -iconSize/2]
+                    });
+                    const marker = L.marker(city.coords, { icon: customIcon });
+                    const popupContent = `<div style="display: flex; align-items: center; gap: 10px;"><img src="${city.largeImage || city.icon}" style="width: 60px; height: auto; border: 2px solid #6b1a1a;"><div><h3 style="margin: 0 0 5px; color: #ffd966; font-family: 'Cinzel', serif;">${city.name}</h3><p style="margin: 0; font-size: 12px;">${city.shortDesc}</p></div></div>`;
+                    marker.bindPopup(popupContent, { className: 'custom-popup' });
+                    marker.on('mouseover', function() { this.openPopup(); });
+                    marker.on('mouseout', function() { this.closePopup(); });
+                    if (city.link && city.link.trim()) marker.on('click', () => { window.location.href = city.link; });
+                    marker.addTo(markerGroup);
+                    markersMap.set(city.name, marker);
+                }
+            }
+            function updateMarkerVisibility(cityName, visible) {
+                const marker = markersMap.get(cityName);
+                if (!marker) return;
+                if (visible) { if (!markerGroup.hasLayer(marker)) marker.addTo(markerGroup); }
+                else { if (markerGroup.hasLayer(marker)) markerGroup.removeLayer(marker); }
+            }
+            function buildCitiesPanel() {
+                const container = document.getElementById('citiesChecklist');
+                container.innerHTML = '';
+                for (const city of cities) {
+                    const div = document.createElement('div'); div.className = 'city-checkbox';
+                    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = `chk_${city.name.replace(/\s/g, '_')}`; cb.checked = city.visible;
+                    cb.addEventListener('change', (e) => { city.visible = e.target.checked; updateMarkerVisibility(city.name, city.visible); });
+                    const label = document.createElement('label'); label.htmlFor = cb.id; label.textContent = city.name;
+                    div.appendChild(cb); div.appendChild(label);
+                    container.appendChild(div);
+                }
+            }
+            function setMarkersVisibility(visible) {
+                if (visible) {
+                    if (!map.hasLayer(markerGroup)) markerGroup.addTo(map);
+                    if (!markersCreated) { addMarkersToGroup(); markersCreated = true; }
+                    for (const city of cities) updateMarkerVisibility(city.name, city.visible);
+                } else {
+                    if (map.hasLayer(markerGroup)) map.removeLayer(markerGroup);
+                }
+            }
+            function checkAllFactions() {
+                document.querySelectorAll('#citiesChecklist input[type="checkbox"]').forEach(cb => {
+                    cb.checked = true;
+                    const cityName = cb.nextElementSibling.textContent;
+                    const city = cities.find(c => c.name === cityName);
+                    if (city) { city.visible = true; updateMarkerVisibility(city.name, true); }
+                });
+            }
+            function uncheckAllFactions() {
+                document.querySelectorAll('#citiesChecklist input[type="checkbox"]').forEach(cb => {
+                    cb.checked = false;
+                    const cityName = cb.nextElementSibling.textContent;
+                    const city = cities.find(c => c.name === cityName);
+                    if (city) { city.visible = false; updateMarkerVisibility(city.name, false); }
+                });
+            }
+
+            // ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ МЕДИА ----------
+            function getVideoHtml(videoLink) {
+                if (!videoLink) return '';
+                let embedUrl = '';
+                const video = videoLink.trim();
+                if (video.includes('youtube.com/watch') || video.includes('youtu.be')) {
+                    const match = video.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/);
+                    if (match) embedUrl = `https://www.youtube.com/embed/${match[1]}`;
+                } else if (video.includes('vimeo.com')) {
+                    const match = video.match(/vimeo\.com\/(\d+)/);
+                    if (match) embedUrl = `https://player.vimeo.com/video/${match[1]}`;
+                } else if (video.includes('vk.com/video') || video.includes('vkvideo.ru/video')) {
+                    let oid = '', vid = '', hash = '';
+                    const match = video.match(/video([-_]?\d+)_(\d+)/);
+                    if (match) {
+                        oid = match[1];
+                        vid = match[2];
+                    }
+                    const hashMatch = video.match(/hash=([a-f0-9]+)/);
+                    if (hashMatch) hash = hashMatch[1];
+                    if (oid && vid) {
+                        embedUrl = `https://vk.com/video_ext.php?oid=${oid}&id=${vid}&hd=1`;
+                        if (hash) embedUrl += `&hash=${hash}`;
+                    }
+                }
+                if (embedUrl) {
+                    const fullscreenBtn = `
+                        <button onclick="openVideoFullscreen('${embedUrl}')" 
+                                style="background:#2a0a0a; border:1px solid #6b1a1a; color:#c9a87c; padding:2px 10px; font-size:12px; cursor:pointer; margin-top:4px; font-family:'Cinzel',serif;">
+                            ⛶ Развернуть видео
+                        </button>
+                    `;
+                    return `<div style="margin-bottom:8px; text-align:center;"><iframe width="300" height="169" src="${embedUrl}" frameborder="0" allow="autoplay; encrypted-media; picture-in-picture;" style="border:2px solid #6b1a1a; border-radius:0; width:100%; max-width:300px; aspect-ratio:16/9;"></iframe>${fullscreenBtn}</div>`;
+                } else {
+                    return `<div style="margin-bottom:8px;"><a href="${video}" target="_blank" style="color:#ffa64d; font-weight:bold;">▶ Смотреть видео</a></div>`;
+                }
+            }
+
+            function openVideoFullscreen(embedUrl) {
+                const overlay = document.createElement('div');
+                overlay.style.cssText = `position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:pointer;`;
+                const container = document.createElement('div');
+                container.style.cssText = `width:90%;max-width:800px;position:relative;background:#1a0808;border:2px solid #6b1a1a;padding:10px;box-shadow:0 0 50px rgba(139,0,0,0.7);`;
+                const iframe = document.createElement('iframe');
+                iframe.src = embedUrl;
+                iframe.style.cssText = `width:100%;aspect-ratio:16/9;border:none;display:block;`;
+                iframe.allow = "autoplay; encrypted-media; fullscreen; picture-in-picture;";
+                iframe.allowFullscreen = true;
+                const closeBtn = document.createElement('button');
+                closeBtn.textContent = '✖';
+                closeBtn.style.cssText = `position:absolute;top:-40px;right:-10px;background:#2a0a0a;border:2px solid #6b1a1a;color:#c9a87c;font-size:24px;width:40px;height:40px;cursor:pointer;font-family:'Cinzel',serif;display:flex;align-items:center;justify-content:center;`;
+                closeBtn.onmouseover = () => { closeBtn.style.background = '#4a1212'; };
+                closeBtn.onmouseout = () => { closeBtn.style.background = '#2a0a0a'; };
+                container.appendChild(iframe);
+                container.appendChild(closeBtn);
+                overlay.appendChild(container);
+                overlay.addEventListener('click', (e) => { if (e.target === overlay) document.body.removeChild(overlay); });
+                closeBtn.addEventListener('click', () => { document.body.removeChild(overlay); });
+                document.addEventListener('keydown', function handler(e) {
+                    if (e.key === 'Escape') {
+                        if (document.body.contains(overlay)) {
+                            document.body.removeChild(overlay);
+                            document.removeEventListener('keydown', handler);
+                        }
+                    }
+                });
+                document.body.appendChild(overlay);
+            }
+            window.openVideoFullscreen = openVideoFullscreen;
+
+            // ---------- ОТРИСОВКА СОБЫТИЙ ----------
+            function getEventMarkerIcon(emoji, color) {
+                return L.divIcon({
+                    className: 'event-div-icon',
+                    html: `<div style="background:${color}; width:30px; height:30px; border:2px solid #6b1a1a; box-shadow:0 0 16px rgba(139,0,0,0.7); display:flex; align-items:center; justify-content:center; font-size:18px; line-height:0;">${emoji}</div>`,
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 15],
+                    popupAnchor: [0, -15]
+                });
+            }
+
+			function showEventsForTurn(turnIndex) {
+				currentTurn = turnIndex; // запоминаем текущий ход
+				const filtered = eventsData.filter(ev => ev.turnIndex === turnIndex);
+
+				// ---- 1. ВСЕГДА ОБНОВЛЯЕМ СПИСОК СОБЫТИЙ В ПАНЕЛИ ----
+				const listContainer = document.getElementById('eventsList');
+				listContainer.innerHTML = '';
+				if (filtered.length === 0) {
+					listContainer.innerHTML = '<div class="no-events">Нет событий в этом ходе</div>';
+				} else {
+					filtered.forEach(ev => {
+						const item = document.createElement('div');
+						item.className = 'event-item';
+						item.style.borderLeftColor = ev.color || '#6b1a1a';
+						item.innerHTML = `
+							<div class="emoji">${ev.emoji || '📍'}</div>
+							<div class="info">
+								<div class="title">${escapeHtml(ev.title)}</div>
+								<div class="desc">${escapeHtml(stripHtml(ev.description))}</div>
+							</div>
+							<button class="goto-btn" data-px="${ev.px}" data-py="${ev.py}" title="Навести на карте">🎯</button>
+						`;
+						listContainer.appendChild(item);
+					});
+				}
+
+				// ---- 2. ОТРИСОВКА МАРКЕРОВ (ТОЛЬКО ЕСЛИ ВКЛЮЧЕНЫ) ----
+				if (!eventsLayer) return;
+				eventsLayer.clearLayers();
+				if (!eventsVisible) return; // если маркеры скрыты – выходим
+
+				filtered.forEach(ev => {
+					const coords = toLeafletCoords(ev.px, ev.py);
+					const marker = L.marker(coords, { icon: getEventMarkerIcon(ev.emoji, ev.color) });
+					let mediaHtml = '';
+					if (ev.video) {
+						mediaHtml = getVideoHtml(ev.video);
+					} else if (ev.image) {
+						mediaHtml = `<div style="margin-bottom:6px; text-align:center;"><img src="${ev.image}" style="max-width:100%; height:auto; border:2px solid #6b1a1a; border-radius:0;" onerror="this.style.display='none'"></div>`;
+					}
+					const popupContent = `
+						${mediaHtml}
+						<b style="color:#ffd966; font-family:'Cinzel',serif;">${ev.title}</b><br>
+						<span style="font-size:13px; color:#d4c9a8;">${ev.description}</span>
+					`;
+					marker.bindPopup(popupContent, { className: 'custom-popup', maxWidth: 340 });
+					marker.addTo(eventsLayer);
+				});
+
+				// ---- 3. ОБРАБОТЧИКИ ДЛЯ КНОПОК "НАВЕСТИ" ----
+				document.querySelectorAll('.event-item .goto-btn').forEach(btn => {
+					btn.addEventListener('click', function(e) {
+						e.stopPropagation();
+						const px = parseInt(this.dataset.px);
+						const py = parseInt(this.dataset.py);
+						const coords = toLeafletCoords(px, py);
+						map.flyTo(coords, 2, { duration: 0.8 });
+						setTimeout(() => {
+							eventsLayer.eachLayer(layer => {
+								if (layer.getLatLng().lat === coords[0] && layer.getLatLng().lng === coords[1]) {
+									layer.openPopup();
+								}
+							});
+						}, 300);
+					});
+				});
+			}
+
+			function toggleEventsVisibility() {
+				eventsVisible = !eventsVisible;
+				const btn = document.getElementById('toggleEventsVisibilityBtn');
+				if (eventsVisible) {
+					btn.textContent = '👁️ Показаны';
+					btn.style.background = '#3a1010';
+					if (currentTurn !== null) {
+						showEventsForTurn(currentTurn);
+					}
+				} else {
+					btn.textContent = '👁️ Скрыты';
+					btn.style.background = '#1f0808';
+					if (eventsLayer) {
+						eventsLayer.clearLayers();
+					}
+				}
+			}
+
+            // ---------- ПАНЕЛИ ----------
+            function toggleEventsPanel(force) {
+                const panel = document.getElementById('eventsPanel');
+                if (force !== undefined) eventsPanelVisible = force;
+                else eventsPanelVisible = !eventsPanelVisible;
+                panel.classList.toggle('visible', eventsPanelVisible);
+                document.getElementById('eventsToggleBtn').classList.toggle('active', eventsPanelVisible);
+            }
+            function toggleFactionsPanel(force) {
+                const panel = document.getElementById('citiesPanel');
+                if (force !== undefined) factionsPanelVisible = force;
+                else factionsPanelVisible = !factionsPanelVisible;
+                panel.classList.toggle('visible', factionsPanelVisible);
+                document.getElementById('factionsToggleBtn').classList.toggle('active', factionsPanelVisible);
+            }
+            function toggleRoutePanel(force) {
+                const panel = document.getElementById('routePanel');
+                routePanelVisible = (force !== undefined) ? force : !routePanelVisible;
+                panel.classList.toggle('visible', routePanelVisible);
+            }
+            function toggleSavedPanel(force) {
+                const panel = document.getElementById('savedRoutesPanel');
+                savedPanelVisible = (force !== undefined) ? force : !savedPanelVisible;
+                panel.classList.toggle('visible', savedPanelVisible);
+            }
+
+            function switchLayer(layerName, btnId) {
+                if (currentLayer === layerName) return;
+                currentLayer = layerName;
+                const bounds = [[0, 0], [MAP_H, MAP_W]];
+                map.removeLayer(currentOverlay);
+                currentOverlay = L.imageOverlay(layers[layerName], bounds, { opacity: 1 }).addTo(map);
+                map.fitBounds(bounds);
+                if (layerName === 'factions') {
+                    setMarkersVisibility(true);
+                    if (!factionsPanelVisible) toggleFactionsPanel(true);
+                } else setMarkersVisibility(false);
+                document.querySelectorAll('.toggle-panel button').forEach(btn => btn.classList.remove('active'));
+                document.getElementById(btnId).classList.add('active');
+            }
+
+            function toggleFullscreen() {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(err => alert("Ошибка перехода в полноэкранный режим: " + err.message));
+                } else {
+                    if (document.exitFullscreen) document.exitFullscreen();
+                }
+            }
+
+            // ---------- ПРИВЯЗКА СОБЫТИЙ ----------
+            function bindEvents() {
+                document.getElementById('toggleRouteBtn').addEventListener('click', () => toggleRoutePanel());
+                document.getElementById('startRouteBtn').addEventListener('click', () => { deactivateModes(); activeMode = 'route'; map.on('click', onTempClick); document.getElementById('startRouteBtn').classList.add('active-mode'); });
+                document.getElementById('rulerBtn').addEventListener('click', () => { deactivateModes(); activeMode = 'ruler'; map.on('click', onTempClick); document.getElementById('rulerBtn').classList.add('active-mode'); });
+                document.getElementById('clearTempBtn').addEventListener('click', clearTemp);
+                document.getElementById('saveRouteBtn').addEventListener('click', saveCurrentAsRoute);
+                document.getElementById('routeTypeSelect').addEventListener('change', (e) => { currentRouteType = e.target.value; if (tempPoints.length) { redrawTempLine(); tempMarkers.forEach(m => m.setStyle({ color: currentColor })); updateTempInfo(); } });
+                document.getElementById('routeColorPicker').addEventListener('change', (e) => { currentColor = e.target.value; if (tempPoints.length) { redrawTempLine(); tempMarkers.forEach(m => m.setStyle({ color: currentColor })); } });
+                document.getElementById('exportSelectedRoutesBtn').addEventListener('click', exportSelectedRoutes);
+                document.getElementById('exportAllRoutesBtn').addEventListener('click', exportAllRoutes);
+                document.getElementById('importFile').addEventListener('change', (e) => { if (e.target.files.length) { importRoutesAdd(e.target.files[0]); e.target.value = ''; } });
+                document.getElementById('btnRelief').addEventListener('click', () => switchLayer('relief', 'btnRelief'));
+                document.getElementById('btnCountries').addEventListener('click', () => switchLayer('countries', 'btnCountries'));
+                document.getElementById('btnFactions').addEventListener('click', () => switchLayer('factions', 'btnFactions'));
+                window.addEventListener('keydown', (e) => { if (e.key === 'Escape') deactivateModes(); });
+
+                document.getElementById('eventsToggleBtn').addEventListener('click', () => toggleEventsPanel());
+                document.getElementById('closeEventsBtn').addEventListener('click', () => toggleEventsPanel(false));
+                document.getElementById('factionsToggleBtn').addEventListener('click', () => toggleFactionsPanel());
+                document.getElementById('closeFactionsBtn').addEventListener('click', () => toggleFactionsPanel(false));
+
+                document.getElementById('checkAllBtn').addEventListener('click', checkAllFactions);
+                document.getElementById('uncheckAllBtn').addEventListener('click', uncheckAllFactions);
+				document.getElementById('toggleEventsVisibilityBtn').addEventListener('click', toggleEventsVisibility);
+                const toggleSaved = document.getElementById('toggleSavedBtn');
+                const closeSaved = document.getElementById('closeSavedBtn');
+                if (toggleSaved) toggleSaved.addEventListener('click', () => toggleSavedPanel());
+                if (closeSaved) closeSaved.addEventListener('click', () => toggleSavedPanel(false));
+                toggleSavedPanel(false);
+
+                document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
+                document.addEventListener('fullscreenchange', () => {
+                    document.getElementById('fullscreenBtn').title = document.fullscreenElement ? 'Выйти' : 'Полноэкранный';
+                });
+
+                document.getElementById('helpBtn').addEventListener('click', () => {
+                    alert("📌 Управление картой Эндора:\n\n- 🗺️ Маршрут: кликайте на карту → добавить точки. Двойной клик — очистить временное.\n- 📏 Линейка: то же, но без сохранения.\n- 🎨 Выберите цвет для нового маршрута.\n- 💾 Сохранить маршрут — линия остаётся на карте и в списке справа.\n- ✅ Выберите маршруты чекбоксами слева от названия.\n- 📤 Экспорт выбранных — сохранит только отмеченные маршруты.\n- 📤 Экспорт всё — сохранит все маршруты.\n- 📥 Импорт (добавить) — добавит маршруты из JSON к существующим.\n- Сохранённые маршруты можно включать/выключать, менять цвет и удалять.\n\nСлои карты: рельеф, страны, фракции (с маркерами).\nПанели событий и фракций открываются независимо.");
+                });
+
+                // Заполняем кнопки ходов
+                const turnsContainer = document.getElementById('turnsContainer');
+                turnsContainer.innerHTML = '';
+                turnsData.forEach((turn, index) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'turn-btn';
+                    btn.textContent = turn.label;
+                    btn.dataset.index = index;
+                    btn.addEventListener('click', function() {
+                        document.querySelectorAll('.turn-btn').forEach(b => b.classList.remove('active'));
+                        this.classList.add('active');
+                        showEventsForTurn(parseInt(this.dataset.index));
+                    });
+                    turnsContainer.appendChild(btn);
+                });
+				// ---- ИНИЦИАЛИЗАЦИЯ: выбираем первый ход по умолчанию ----
+				if (turnsData.length > 0) {
+					const firstBtn = document.querySelector('.turn-btn');
+					if (firstBtn) {
+						firstBtn.classList.add('active');
+						currentTurn = 0;
+						showEventsForTurn(0); // отрисует список событий (маркеры будут скрыты, т.к. eventsVisible = false)
+					}
+				}
+            }
+
+            // ---------- ЗАПУСК ----------
+            initMap();
+            buildCitiesPanel();
+            loadFromLocalStorage();
+            bindEvents();
+            deactivateModes();
+            setMarkersVisibility(false);
+            toggleRoutePanel(false);
+            toggleSavedPanel(false);
+            toggleFactionsPanel(false);
+            toggleEventsPanel(false);
+        })();
+    </script>
+</body>
+</html>
